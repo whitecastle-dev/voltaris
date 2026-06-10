@@ -95,9 +95,6 @@ async def get_users():
 
 @api_router.post("/users", response_model=UserResponse)
 async def create_user(input: UserCreateRequest, current_user: dict = Depends(lambda: None)): 
-    # En producción, aquí inyectarías el usuario autenticado (JWT)
-    # Ejemplo: if current_user['role'] != 'superadmin': raise HTTPException(403)
-    
     if await db.users.find_one({"username": {"$regex": f"^{input.username}$", "$options": "i"}}):
         raise HTTPException(status_code=400, detail="El usuario ya existe")
     
@@ -115,10 +112,14 @@ async def delete_user(user_id: str):
         return {"message": "Usuario eliminado"}
     raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-# RUTAS PORTFOLIO (Editores y Superadmin pueden editar, Lectura solo ver)
+# RUTAS PORTFOLIO
+@api_router.get("/projects")
+async def get_projects():
+    # Esta ruta corrige el error 405 permitiendo el método GET
+    return await db.projects.find({}, {"_id": 0}).to_list(1000)
+
 @api_router.post("/projects")
 async def create_project(input: dict):
-    # Aquí añadirías: if user_role == 'solo_lectura': raise 403
     return await db.projects.insert_one(input)
 
 app.include_router(api_router)
