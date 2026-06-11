@@ -74,13 +74,14 @@ class UserResponse(BaseModel):
     role: str
     permissions: dict
 
-# --- MODELO CORREGIDO PARA EVITAR 422 ---
+# --- MODELO CORREGIDO PARA ACEPTAR IMÁGENES ---
 class Project(BaseModel):
     title: str
     company_name: str
     category: str
     description: str
     date: Optional[str] = ""
+    images: List[str] = [] # Campo nuevo para las imágenes
     media_url: Optional[str] = ""
 
 # --- RUTAS ---
@@ -113,10 +114,9 @@ async def delete_user(user_id: str):
         return {"message": "Usuario eliminado"}
     raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-# --- RUTAS PORTFOLIO CORREGIDAS ---
+# --- RUTAS PORTFOLIO ---
 @api_router.get("/projects")
 async def get_projects():
-    # Convertimos el _id de Mongo a string 'id' para que el frontend lo entienda
     projects = await db.projects.find({}).to_list(1000)
     for p in projects:
         p["id"] = str(p["_id"])
@@ -129,14 +129,11 @@ async def create_project(project: Project):
     await db.projects.insert_one(project_dict)
     return {"message": "Proyecto creado", "id": project_dict['id']}
 
-# --- RUTA DE BORRADO MULTIPROPÓSITO ---
 @api_router.delete("/projects/{project_id}")
 async def delete_project(project_id: str):
-    # Intentamos borrar usando el campo id o el _id de Mongo
     query = {"id": project_id}
     if len(project_id) == 24:
         query = {"$or": [{"id": project_id}, {"_id": ObjectId(project_id)}]}
-        
     result = await db.projects.delete_one(query)
     if result.deleted_count == 1:
         return {"message": "Proyecto eliminado"}
