@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends
+from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
@@ -17,7 +17,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Configuración de entorno
 mongo_url = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 db_name = os.getenv("DB_NAME", "voltaris_db")
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+# Asegúrate de que esta variable en Render tenga tu dominio exacto
+cors_origins = os.getenv("CORS_ORIGINS", "https://voltarisindustry.com,http://localhost:3000").split(",")
 
 client = AsyncIOMotorClient(mongo_url)
 db = client[db_name]
@@ -60,7 +61,6 @@ class UserCreateRequest(BaseModel):
     password: str
     role: str = "editor"
     permissions: UserPermissions
-
     @validator('password')
     def validate_password_complexity(cls, v):
         if len(v) < 8 or not re.search(r'[A-Z]', v) or not re.search(r'\d', v):
@@ -74,14 +74,13 @@ class UserResponse(BaseModel):
     role: str
     permissions: dict
 
-# --- MODELO CORREGIDO PARA ACEPTAR IMÁGENES ---
 class Project(BaseModel):
     title: str
     company_name: str
     category: str
     description: str
     date: Optional[str] = ""
-    images: List[str] = [] # Campo nuevo para las imágenes
+    images: List[str] = []
     media_url: Optional[str] = ""
 
 # --- RUTAS ---
@@ -95,17 +94,6 @@ async def login(credentials: dict):
 @api_router.get("/users", response_model=List[UserResponse])
 async def get_users():
     return await db.users.find({}, {"_id": 0}).to_list(1000)
-
-@api_router.post("/users", response_model=UserResponse)
-async def create_user(input: UserCreateRequest): 
-    if await db.users.find_one({"username": {"$regex": f"^{input.username}$", "$options": "i"}}):
-        raise HTTPException(status_code=400, detail="El usuario ya existe")
-    user_dict = input.model_dump()
-    user_dict['id'] = str(uuid.uuid4())
-    user_dict['password'] = pwd_context.hash(input.password)
-    user_dict['created_at'] = datetime.now(timezone.utc).isoformat()
-    await db.users.insert_one(user_dict)
-    return UserResponse(**user_dict)
 
 @api_router.delete("/users/{user_id}")
 async def delete_user(user_id: str):
@@ -125,16 +113,14 @@ async def get_projects():
 @api_router.post("/projects")
 async def create_project(project: Project):
     project_dict = project.model_dump()
-    project_dict['id'] = str(uuid.uuid4())
-    await db.projects.insert_one(project_dict)
-    return {"message": "Proyecto creado", "id": project_dict['id']}
+    result = await db.projects.insert_one(project_dict)
+    return {"message": "Proyecto creado", "id": str(result.inserted_id)}
 
 @api_router.delete("/projects/{project_id}")
 async def delete_project(project_id: str):
-    query = {"id": project_id}
-    if len(project_id) == 24:
-        query = {"$or": [{"id": project_id}, {"_id": ObjectId(project_id)}]}
-    result = await db.projects.delete_one(query)
+    if project_id == "undefined" or not ObjectId.is_valid(project_id):
+        raise HTTPException(status_code=400, detail="ID inválido")
+    result = await db.projects.delete_one({"_id": ObjectId(project_id)})
     if result.deleted_count == 1:
         return {"message": "Proyecto eliminado"}
     raise HTTPException(status_code=404, detail="Proyecto no encontrado")
