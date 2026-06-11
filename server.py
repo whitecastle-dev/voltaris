@@ -10,6 +10,8 @@ from typing import List, Optional
 from passlib.context import CryptContext
 from contextlib import asynccontextmanager
 from bson import ObjectId
+# INTEGRACIÓN DE CORREO: Importaciones necesarias
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 
 # Configuración de seguridad
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -21,6 +23,20 @@ cors_origins = os.getenv("CORS_ORIGINS", "https://voltarisindustry.com,http://lo
 
 client = AsyncIOMotorClient(mongo_url)
 db = client[db_name]
+
+# INTEGRACIÓN DE CORREO: Configuración de IONOS
+# Nota: Configura MAIL_USERNAME y MAIL_PASSWORD como variables de entorno en Render por seguridad.
+mail_conf = ConnectionConfig(
+    MAIL_USERNAME=os.getenv("MAIL_USERNAME", "info@voltarisindustry.es"), # Tu correo de IONOS
+    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD", "tu-contraseña-aqui"),        # Tu contraseña de IONOS
+    MAIL_FROM=os.getenv("MAIL_USERNAME", "info@voltarisindustry.es"),
+    MAIL_PORT=587,
+    MAIL_SERVER="smtp.ionos.es", # Servidor SMTP de IONOS para España
+    MAIL_STARTTLS=True,
+    MAIL_SSL_TLS=False,
+    USE_CREDENTIALS=True,
+    VALIDATE_CERTS=True
+)
 
 # --- FUNCIÓN DE VERIFICACIÓN DE ROL ---
 def check_role(user: dict, required_role: str):
@@ -141,6 +157,44 @@ async def delete_project(project_id: str):
     if result.deleted_count == 1:
         return {"message": "Proyecto eliminado"}
     raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+
+# INTEGRACIÓN DE CORREO: Nueva ruta para el formulario de contacto
+@api_router.post("/contact")
+async def send_contact_email(data: dict):
+    """
+    Recibe los datos del formulario de contacto y envía un correo
+    usando el SMTP de IONOS.
+    """
+    message_body = f"""
+Has recibido un nuevo mensaje desde el formulario de contacto de la web Voltaris:
+
+Nombre completo: {data.get('name')}
+Correo electrónico: {data.get('email')}
+Teléfono: {data.get('phone', 'No facilitado')}
+Empresa: {data.get('company', 'No facilitada')}
+
+Mensaje:
+{data.get('message')}
+
+---
+Este correo se ha generado automáticamente desde voltarisindustry.es
+"""
+
+    message = MessageSchema(
+        subject=f"NUEVO MENSAJE WEB: {data.get('name')}",
+        recipients=["info@voltarisindustry.es"], # Correo destino donde quieres recibir los mensajes
+        body=message_body,
+        subtype="plain"
+    )
+
+    fm = FastMail(mail_conf)
+    try:
+        await fm.send_message(message)
+        return {"status": "success", "message": "Correo enviado con éxito"}
+    except Exception as e:
+        # Registra el error exacto para depuración
+        print(f"ERROR EN ENVÍO DE CORREO: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error interno al enviar el correo: {str(e)}")
 
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=cors_origins, allow_methods=["*"], allow_headers=["*"])
