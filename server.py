@@ -28,12 +28,12 @@ db = client[db_name]
 # Nota: Configura MAIL_USERNAME y MAIL_PASSWORD como variables de entorno en Render por seguridad.
 mail_conf = ConnectionConfig(
     MAIL_USERNAME=os.getenv("MAIL_USERNAME", "info@voltarisindustry.es"), # Tu correo de IONOS
-    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD", "tu-contraseña-aqui"),        # Tu contraseña de IONOS
+    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD", "Voltarisadmon2026*"),        # Tu contraseña de IONOS
     MAIL_FROM=os.getenv("MAIL_USERNAME", "info@voltarisindustry.es"),
-    MAIL_PORT=587,
+    MAIL_PORT=465,
     MAIL_SERVER="smtp.ionos.es", # Servidor SMTP de IONOS para España
-    MAIL_STARTTLS=True,
-    MAIL_SSL_TLS=False,
+    MAIL_STARTTLS=False,
+    MAIL_SSL_TLS=True,
     USE_CREDENTIALS=True,
     VALIDATE_CERTS=True
 )
