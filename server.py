@@ -17,7 +17,6 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Configuración de entorno
 mongo_url = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 db_name = os.getenv("DB_NAME", "voltaris_db")
-# Asegúrate de que esta variable en Render tenga tu dominio exacto
 cors_origins = os.getenv("CORS_ORIGINS", "https://voltarisindustry.com,http://localhost:3000").split(",")
 
 client = AsyncIOMotorClient(mongo_url)
@@ -102,16 +101,23 @@ async def delete_user(user_id: str):
         return {"message": "Usuario eliminado"}
     raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-# --- RUTAS PORTFOLIO CORREGIDAS ---
+# --- RUTAS PORTFOLIO ---
 @api_router.get("/projects")
 async def get_projects():
-    # Eliminamos el _id de MongoDB en la consulta para evitar el error de serialización
-    projects = await db.projects.find({}, {"_id": 1}).to_list(1000)
+    projects = await db.projects.find({}).to_list(1000)
     cleaned_projects = []
     for p in projects:
-        # Convertimos el ObjectId a string y lo guardamos como 'id'
-        p_dict = {k: v for k, v in p.items() if k != "_id"}
-        p_dict["id"] = str(p["_id"])
+        # Forzamos la creación del objeto para asegurar que el frontend reciba todo
+        p_dict = {
+            "id": str(p["_id"]),
+            "title": p.get("title", ""),
+            "company_name": p.get("company_name", ""),
+            "category": p.get("category", ""),
+            "description": p.get("description", ""),
+            "date": p.get("date", ""),
+            "images": p.get("images", []),
+            "media_url": p.get("media_url", "")
+        }
         cleaned_projects.append(p_dict)
     return cleaned_projects
 
