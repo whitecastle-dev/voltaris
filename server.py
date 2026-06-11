@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
@@ -67,17 +67,21 @@ class UserCreateRequest(BaseModel):
             raise ValueError("Mínimo 8 caracteres, mayúsculas y números.")
         return v
 
-class UserUpdateRequest(BaseModel):
-    role: str
-    permissions: UserPermissions
-    password: Optional[str] = None
-
 class UserResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str
     username: str
     role: str
     permissions: dict
+
+# Modelo para Proyectos
+class Project(BaseModel):
+    title: str
+    company_name: str
+    category: str
+    date: str
+    description: str
+    media_url: str
 
 # --- RUTAS ---
 
@@ -88,13 +92,13 @@ async def login(credentials: dict):
         raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
     return UserResponse(**user)
 
-# RUTAS DE USUARIOS (Solo Superadmin)
+# RUTAS DE USUARIOS
 @api_router.get("/users", response_model=List[UserResponse])
 async def get_users():
     return await db.users.find({}, {"_id": 0}).to_list(1000)
 
 @api_router.post("/users", response_model=UserResponse)
-async def create_user(input: UserCreateRequest, current_user: dict = Depends(lambda: None)): 
+async def create_user(input: UserCreateRequest): 
     if await db.users.find_one({"username": {"$regex": f"^{input.username}$", "$options": "i"}}):
         raise HTTPException(status_code=400, detail="El usuario ya existe")
     
@@ -112,15 +116,24 @@ async def delete_user(user_id: str):
         return {"message": "Usuario eliminado"}
     raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-# RUTAS PORTFOLIO
+# RUTAS PORTFOLIO (Gestión de proyectos)
 @api_router.get("/projects")
 async def get_projects():
-    # Esta ruta corrige el error 405 permitiendo el método GET
     return await db.projects.find({}, {"_id": 0}).to_list(1000)
 
 @api_router.post("/projects")
-async def create_project(input: dict):
-    return await db.projects.insert_one(input)
+async def create_project(project: Project):
+    project_dict = project.model_dump()
+    project_dict['id'] = str(uuid.uuid4())
+    await db.projects.insert_one(project_dict)
+    return {"message": "Proyecto creado", "id": project_dict['id']}
+
+@api_router.delete("/projects/{project_id}")
+async def delete_project(project_id: str):
+    result = await db.projects.delete_one({"id": project_id})
+    if result.deleted_count == 1:
+        return {"message": "Proyecto eliminado"}
+    raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=cors_origins, allow_methods=["*"], allow_headers=["*"])
