@@ -4,14 +4,13 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import uuid
 import re
+import requests # Cambio: Usamos requests para llamar a la API de Brevo
 from datetime import datetime, timezone
 from pydantic import BaseModel, ConfigDict, validator
 from typing import List, Optional
 from passlib.context import CryptContext
 from contextlib import asynccontextmanager
 from bson import ObjectId
-# INTEGRACIÓN DE CORREO: Importaciones necesarias
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 
 # Configuración de seguridad
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -23,20 +22,6 @@ cors_origins = os.getenv("CORS_ORIGINS", "https://voltarisindustry.com,http://lo
 
 client = AsyncIOMotorClient(mongo_url)
 db = client[db_name]
-
-# INTEGRACIÓN DE CORREO: Configuración de IONOS
-# Nota: Configura MAIL_USERNAME y MAIL_PASSWORD como variables de entorno en Render por seguridad.
-mail_conf = ConnectionConfig(
-    MAIL_USERNAME=os.getenv("MAIL_USERNAME", "info@voltarisindustry.es"), # Tu correo de IONOS
-    MAIL_PASSWORD=os.getenv("MAIL_PASSWORD", "Voltarisadmon2026*"),        # Tu contraseña de IONOS
-    MAIL_FROM=os.getenv("MAIL_USERNAME", "info@voltarisindustry.es"),
-    MAIL_PORT=465,
-    MAIL_SERVER="smtp.ionos.es", # Servidor SMTP de IONOS para España
-    MAIL_STARTTLS=False,
-    MAIL_SSL_TLS=True,
-    USE_CREDENTIALS=True,
-    VALIDATE_CERTS=True
-)
 
 # --- FUNCIÓN DE VERIFICACIÓN DE ROL ---
 def check_role(user: dict, required_role: str):
@@ -158,43 +143,42 @@ async def delete_project(project_id: str):
         return {"message": "Proyecto eliminado"}
     raise HTTPException(status_code=404, detail="Proyecto no encontrado")
 
-# INTEGRACIÓN DE CORREO: Nueva ruta para el formulario de contacto
+# INTEGRACIÓN DE CORREO: Nueva ruta usando API Brevo
 @api_router.post("/contact")
 async def send_contact_email(data: dict):
-    """
-    Recibe los datos del formulario de contacto y envía un correo
-    usando el SMTP de IONOS.
-    """
-    message_body = f"""
-Has recibido un nuevo mensaje desde el formulario de contacto de la web Voltaris:
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "api-key": os.getenv("BREVO_API_KEY"),
+        "content-type": "application/json"
+    }
+    payload = {
+        "sender": {"email": "info@voltarisindustry.es", "name": "Web Voltaris"},
+        "to": [{"email": "info@voltarisindustry.es"}],
+        "subject": f"NUEVO MENSAJE WEB: {data.get('name')}",
+        "textContent": f"""
+        Has recibido un nuevo mensaje desde el formulario de contacto de la web Voltaris:
 
-Nombre completo: {data.get('name')}
-Correo electrónico: {data.get('email')}
-Teléfono: {data.get('phone', 'No facilitado')}
-Empresa: {data.get('company', 'No facilitada')}
+        Nombre completo: {data.get('name')}
+        Correo electrónico: {data.get('email')}
+        Teléfono: {data.get('phone', 'No facilitado')}
+        Empresa: {data.get('company', 'No facilitada')}
 
-Mensaje:
-{data.get('message')}
+        Mensaje:
+        {data.get('message')}
 
----
-Este correo se ha generado automáticamente desde voltarisindustry.es
-"""
-
-    message = MessageSchema(
-        subject=f"NUEVO MENSAJE WEB: {data.get('name')}",
-        recipients=["info@voltarisindustry.es"], # Correo destino donde quieres recibir los mensajes
-        body=message_body,
-        subtype="plain"
-    )
-
-    fm = FastMail(mail_conf)
+        ---
+        Este correo se ha generado automáticamente desde voltarisindustry.es
+        """
+    }
+    
     try:
-        await fm.send_message(message)
-        return {"status": "success", "message": "Correo enviado con éxito"}
+        response = requests.post(url, json=payload, headers=headers)
+        if response.status_code == 201:
+            return {"status": "success", "message": "Correo enviado con éxito"}
+        else:
+            raise HTTPException(status_code=500, detail="Error en el servicio de correo externo")
     except Exception as e:
-        # Registra el error exacto para depuración
-        print(f"ERROR EN ENVÍO DE CORREO: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error interno al enviar el correo: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=cors_origins, allow_methods=["*"], allow_headers=["*"])
