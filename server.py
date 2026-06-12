@@ -1,10 +1,11 @@
 from fastapi import FastAPI, APIRouter, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response # Añadido para la respuesta XML
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import uuid
 import re
-import requests # Cambio: Usamos requests para llamar a la API de Brevo
+import requests
 from datetime import datetime, timezone
 from pydantic import BaseModel, ConfigDict, validator
 from typing import List, Optional
@@ -102,7 +103,21 @@ async def delete_user(user_id: str):
         return {"message": "Usuario eliminado"}
     raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-# --- RUTAS PORTFOLIO ---
+# --- RUTAS PORTFOLIO Y SITEMAP ---
+@api_router.get("/sitemap.xml")
+async def get_sitemap():
+    projects = await db.projects.find({}).to_list(1000)
+    base_url = "https://voltarisindustry.es"
+    sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    sitemap += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    pages = ["/", "/quienes-somos", "/servicios", "/portafolio", "/contacto"]
+    for page in pages:
+        sitemap += f'  <url><loc>{base_url}{page}</loc></url>\n'
+    for p in projects:
+        sitemap += f'  <url><loc>{base_url}/portafolio/{str(p["_id"])}</loc></url>\n'
+    sitemap += '</urlset>'
+    return Response(content=sitemap, media_type="application/xml")
+
 @api_router.get("/projects")
 async def get_projects():
     projects = await db.projects.find({}).to_list(1000)
